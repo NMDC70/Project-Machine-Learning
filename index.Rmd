@@ -8,22 +8,24 @@ output: html_document
 knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
                       echo=FALSE, warning=FALSE, message=FALSE)
 ```
-## Background to the Project
 
-Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about ersonal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)
+## Project Background
 
-## Goal For the Project
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. While people regularly quantify how much of a particular activity they do, they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)
 
-Use the Training data to train a Machine Learning Model to correctly predict the manner in which the test subjects did the activity. Twenty cases are provided in the Test data for which prediction has to be done. A report has to be created on the approach & methodology including an estimation of the out of sample error.
+## Goal 
 
-## Our Approach 
+Use the Training data provided to train a Machine Learning Model to correctly predict the manner in which the test subjects did the activity. Twenty cases are provided in the Test data for which prediction has to be done. A report has to be created on the approach & methodology including an estimation of the out of sample error.
 
-Quick analysis of the training data shows that there are 160 variables and 19622 observations. As such Big Data Analysis would be focused on using the richess of the entire data set but given the humble capability of my laptop cleaning up the data & feature selection would be a key first step to make the this a manageable project. Following are the actiivities that will be carried out in this project:
+## Key Activities
+
+Following are the activities that will be carried out in this project:
 
 1) Feature Selection
 2) Initial Evaluation of multiple models & shortlist to one
 3) Tune the chosen Model on the full Data Set
 4) Submit Predictions
+
 
 ## Feature Selection
 
@@ -31,25 +33,24 @@ Quick analysis of the training data shows that there are 160 variables and 19622
 Fileurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 ```
 
+Dimensions of the Training data
 ```{r echo = FALSE}
 Traindata <- read.csv("C:/FOR R Projects/pml-training.csv")
-## Dimensions of the Training data
-dim(Traindata)
+cat("Dimensions of the Training data", dim(Traindata))
 ```
 
-
-Initial Exploratory analysis tells us that there are multiple columns with NA values, empty columns & columns with undefined values (DIV/0!). So we will remove these from the Training Data.
+Initial Exploratory analysis tells us that there are multiple columns with NA values, empty columns & columns with undefined values (DIV/0!). So we will remove these columns which have more than 80% NA, blank or undefined values from the Training Data. 
 
 ```{r echo = FALSE}
 projtrain2 <- Traindata
 projtrain2[projtrain2 == "#DIV/0!" | projtrain2 == ""] <- NA
 inttrainset <- projtrain2[, !(colMeans(is.na(projtrain2)) > 0.5)]
 inttrainset <- inttrainset[complete.cases(inttrainset), ]
-## Dimensions of the Training data after removing NA's, Blanks, undefined
-dim(inttrainset)
+cat("Dimensions after initial Data Cleansing", dim(inttrainset))
 ```
 
-In step two we will remove very highly correlated variables  & non zero value predictors.
+In step two we will remove redundancy by eliminating very highly correlated variables, we will remove non zero value predictors & the basic time stamp information. 
+
 ```{r echo= FALSE}
 library(mlbench)
 library(caret)
@@ -58,16 +59,134 @@ highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
 filteredDescr <- inttrainset[,-(highlyCorrelated + 7)]
 filteredDescr1 <- filteredDescr[, -c(1,3,4,5)]
 filteredDescr2 <- filteredDescr1[, -2]
-##traing data dimensions after removing highly correlated variables & NZV variables 
-dim(filteredDescr2)
+cat("final Dimensions of the Training Dataset", dim(filteredDescr2))
 ```
 
+From this data set we will take about 20%. Using Recursive Feature Elimination we can see the relative important of the different variables. These can also be an input for further optimizing number of features. We will also train Models for Random Forest, Learning Vector Quantization & GBM & evaluate the relative importance of the variables. 
+
+The best approach would have been to compare the models with a 60/40 split of the training data but given the limitations of time & the computing capability that I have i am doing model comparison with 20 percent of data for training & then 20% of the data for testing.
+
+
+```{r echo= FALSE}
+library(foreach)
+library(doParallel)
+registerDoParallel(4)
+intrain1 <- createDataPartition(y = filteredDescr2$classe, p = 0.2, list = FALSE)
+myexpldata <- filteredDescr2[intrain1, ]
+set.seed(1001)
+modelrf <- train(classe ~ ., data = myexpldata, trControl = trainControl(method = "cv", number = 10))
+importancerf <- varImp(modelrf, scale=FALSE)
+set.seed(1001)
+control <- rfeControl(functions=rfFuncs, method="cv", number=3)
+results <- rfe(myexpldata[,1:33], myexpldata[,34], sizes=c(1:33), rfeControl=control)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+par(mfrow=c(1,2))
+plot(importancerf, main = "Importance of Variables - Random Forest")
+plot(results, type=c("g", "o"), main = "Recursive Feature Elimination")
+print(results)
+```
+
+```{r echo= FALSE}
+set.seed(1001)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+modellvq1 <- train(classe ~ ., data = myexpldata, method="lvq", trControl=control, tuneLength= 5)
+set.seed(1001)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+modellvq2 <- train(classe ~ ., data = myexpldata, method="lvq", preProcess="scale", trControl=control, tuneLength = 5)
+importancelvq2 <- varImp(modellvq2, scale = FALSE)
+set.seed(1001)
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+modelgbm <- train(classe ~., data = myexpldata, method = "gbm", trControl = fitControl, verbose = FALSE)
+importancegbm <- varImp(modelgbm, scale = FALSE)
+par(mfrow=c(1, 2))
+plot(importancelvq2, main = "Importance of variables - Learning Vector Quantization")
+plot(importancegbm, main = "Importance of variables - GBM")
+
+```
+
+We can see from the plot for RFE that there are four variables that maximize the prediction accuracy & beyond that accuracy actually drops marginally. RFE, random forest & GBM have a high agreement on the importance of variables while we get a very different output from LQV. We have to evaluate the prediction accuracy of the models by checking on the predictions against some more data from the training set. We will do this by taking another 20% of the remaining data from the training dataset.  
+
+```{r echo= FALSE}
+
+BalanceData <- filteredDescr2[-intrain1, ]
+inTest <- createDataPartition(y = BalanceData$classe, p = 0.2, list = FALSE)
+myexpltestdata <- BalanceData[inTest, ]
+predrf <- predict(modelrf, newdata = myexpltestdata)
+compmytestRF <- myexpltestdata
+compmytestRF$predright <- predrf == compmytestRF$classe
+ErrorRF = 1- sum(compmytestRF$predright)/ nrow(compmytestRF)
+cat("Number of correct predictions with Random Forest =", sum(compmytestRF$predright), "out of total cases =", nrow(compmytestRF))
+cat("Prediction Error Random Forest =", ErrorRF)
+predrfe <- predict(results, newdata = myexpltestdata)
+compmytestRFE <- myexpltestdata
+compmytestRFE$predright <- predrfe$pred == compmytestRFE$classe
+ErrorRFE = 1- sum(compmytestRFE$predright)/ nrow(compmytestRFE)
+cat("Number of correct predictions with RFE =", sum(compmytestRFE$predright), "out of total cases =", nrow(compmytestRFE))
+cat("Prediction Error RFE =", ErrorRFE)
+```
+
+```{r echo= FALSE}
+predlvq1 <- predict(modellvq1, newdata = myexpltestdata)
+compmytestLVQ1 <- myexpltestdata
+compmytestLVQ1$predright <- predlvq1 == compmytestLVQ1$classe
+cat("Number of correct predictions with LVQ w/o preprossing =", sum(compmytestLVQ1$predright), "out of total cases =", nrow(compmytestLVQ1))
+ErrorLVQ1 = 1- sum(compmytestLVQ1$predright)/ nrow(compmytestLVQ1)
+predlvq2 <- predict(modellvq2, newdata = myexpltestdata)
+compmytestLVQ2 <- myexpltestdata
+compmytestLVQ2$predright <- predlvq2 == compmytestLVQ2$classe
+ErrorLVQ2 = 1- sum(compmytestLVQ2$predright)/ nrow(compmytestLVQ2)
+cat("Number of correct predictions with LVQ with preprossing =", sum(compmytestLVQ2$predright), "out of total cases =", nrow(compmytestLVQ2))
+predgbm <- predict(modelgbm, newdata = myexpltestdata)
+compmytestgbm <- myexpltestdata
+compmytestgbm$predright <- predgbm == compmytestgbm$classe
+Errorgbm = 1- sum(compmytestgbm$predright)/ nrow(compmytestgbm)
+cat("Number of correct predictions with GBM =", sum(compmytestgbm$predright), "out of total cases =", nrow(compmytestgbm))
+
+
+cat("Prediction Error LVQ without Preprossing =", ErrorLVQ1)
+cat("Prediction Error LVQ with preprosseing =", ErrorLVQ2)
+cat("Prediction Error GBM =", Errorgbm)
+```
+
+Even though Recursive feature elimination is more of an approach to estimate the contribution of a feature to model accuracy for this data set the RFE model is giving better predictions compared to both Random Forest & GBM (Random Forest results are marginally better than GBM). LVQ doesn’t seem to be the right model for this data giving 51% correct prediction without preprocessing & 68% with preprocessing. We can also do some statistical analysis on model accuracy but that is beyond the scope of the current project.
+
+Final validation by creating train & Test sets with a 60 / 40 split & training a Random Forest model with the four variables from the RFE output.
+
+
+```{r echo= FALSE}
+library(foreach)
+library(doParallel)
+registerDoParallel(4)
+ftrain <- filteredDescr2[, c(2,3,8, 22, 34)]
+intrain2 <- createDataPartition(y = filteredDescr2$classe, p = 0.6, list = FALSE)
+traindata <- ftrain[intrain2, ]
+set.seed(1001)
+modelrf <- train(classe ~ ., data = traindata, trControl = trainControl(method = "cv", number = 10))
+modelrf$finalModel
+testdata <- ftrain[-intrain2, ]
+predictrf <- predict(modelrf, newdata = testdata)
+testdata$predright <- predictrf == testdata$classe
+cat("Number of correct predictions =", sum(testdata$predright), "out of total cases =", nrow(testdata))
+Error = 1- sum(testdata$predright)/ nrow(testdata)
+cat("Prediction error =", Error )
+```
+
+In the final step the model is trained on the complete data set & then run on the twenty test cases to predict & submit the final outcome.  
+
+# Annexure
+
+The code base of the project 
 ```{r eval=FALSE, echo= FALSE}
-projtrain <- read.csv("pml-training.csv")
-projtrain2 <- projtrain
+
+Traindata <- read.csv("C:/FOR R Projects/pml-training.csv")
+cat("Dimensions of the Training data", dim(Traindata)
+    
+projtrain2 <- Traindata
 projtrain2[projtrain2 == "#DIV/0!" | projtrain2 == ""] <- NA
 inttrainset <- projtrain2[, !(colMeans(is.na(projtrain2)) > 0.5)]
 inttrainset <- inttrainset[complete.cases(inttrainset), ]
+cat("Dimensions after initial Data Cleansing", dim(inttrainset))
+
 library(mlbench)
 library(caret)
 correlationMatrix <- cor(inttrainset[,8:59])
@@ -75,65 +194,88 @@ highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.75)
 filteredDescr <- inttrainset[,-(highlyCorrelated + 7)]
 filteredDescr1 <- filteredDescr[, -c(1,3,4,5)]
 filteredDescr2 <- filteredDescr1[, -2]
-intrain <- createDataPartition(y = filteredDescr2$classe, p = 0.7, list = FALSE)
-mytrain <- filteredDescr2[intrain, ]
-mytest <- filteredDescr2[-intrain, ]
-testset <- read.csv("pml-testing.csv")
+cat("final Dimensions of the Training Dataset", dim(filteredDescr2))
+
+
 library(foreach)
 library(doParallel)
 registerDoParallel(4)
-##output <- train(classe ~ ., data = dataSet, trControl = trainControl(method = "cv", number = 3))
-##importance <- varImp(output, scale=FALSE)
-##print(importance)
-##plot(importance)
+intrain1 <- createDataPartition(y = filteredDescr2$classe, p = 0.2, list = FALSE)
+myexpldata <- filteredDescr2[intrain1, ]
 set.seed(1001)
-modelrf <- train(classe ~ ., data = mytrain, trControl = trainControl(method = "cv", number = 10))
-importance <- varImp(output, scale=FALSE)
-print(importance)
-plot(importance)
-confusionMatrix(modelrf)
-output$finalModel
-predrf <- predict(modelrf, newdata = mytest)
-compmytest <- mytest
-compmytest$predright <- predrf == compmytest$classe
-sum(compmytest$predright)/ nrow(compmytest)
-
-
-## for future research
-##control <- trainControl(method="repeatedcv", number=10, repeats=3)
-##model <- train(diabetes~., data=PimaIndiansDiabetes, method="lvq", preProcess="scale", trControl=control)
-##
-## RFE - Recursive feature elimination
-control <- rfeControl(functions=rfFuncs, method="cv", number=10)
-results <- rfe(filteredDescr[,1:37], filteredDescr[,38], sizes=c(1:37), rfeControl=control)
-plot(results, type=c("g", "o"))
+modelrf <- train(classe ~ ., data = myexpldata, trControl = trainControl(method = "cv", number = 10))
+importancerf <- varImp(modelrf, scale=FALSE)
+set.seed(1001)
+control <- rfeControl(functions=rfFuncs, method="cv", number=3)
+results <- rfe(myexpldata[,1:33], myexpldata[,34], sizes=c(1:33), rfeControl=control)
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
 set.seed(1001)
 control <- trainControl(method="repeatedcv", number=10, repeats=3)
-modellvq1 <- train(classe ~ ., data = mytrain, method="lvq", trControl=control, tuneLength= 5)
-predlvq1 <- predict(modellvq1, newdata = mytest)
-compmytestlvq <- mytest
-compmytestlvq$predright <- predlvq1 == compmytestlvq$classe
-sum(compmytestlvq$predright)/ nrow(compmytestlvq)
-
-## with Preprocess
+modellvq1 <- train(classe ~ ., data = myexpldata, method="lvq", trControl=control, tuneLength= 5)
 set.seed(1001)
 control <- trainControl(method="repeatedcv", number=10, repeats=3)
-modellvq2 <- train(classe ~ ., data = mytrain, method="lvq", preProcess="scale", trControl=control, tuneLength = 5)
-predlvq2 <- predict(modellvq2, newdata = mytest)
-compmytestlvq2 <- mytest
-compmytestlvq2$predright <- predlvq2 == compmytestlvq2$classe
-sum(compmytestlvq2$predright)/ nrow(compmytestlvq2)
-
-## LVQ is not the right approach for this data set
+modellvq2 <- train(classe ~ ., data = myexpldata, method="lvq", preProcess="scale", trControl=control, tuneLength = 5)
+importancelvq2 <- varImp(modellvq2, scale = FALSE)
 set.seed(1001)
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+modelgbm <- train(classe ~., data = myexpldata, method = "gbm", trControl = fitControl, verbose = FALSE)
+importancegbm <- varImp(modelgbm, scale = FALSE)
+par(mfrow = c(2, 2))
+plot(importancerf, main = "Importance of Variables - Random Forest")
+plot(results, type=c("g", "o"), main = "Recursive Feature Elimination")
+plot(importancelvq2, main = "Importance of variables - Learning Vector Quantization")
+plot(importancegbm, main = "Importance of variables - GBM")
+cat("Top Four variables identified by Recursive Feature Elemination", "\n" , predictors(results))
+print(results)
 
-fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
-modelgbm <- train(classe ~., data = mytrain, methos = "gbm", trControl = fitControl, verbose = FALSE)
+BalanceData <- filteredDescr2[-intrain, ]
+inTest <- createDataPartition(y = BalanceData$classe, p = 0.2, list = FALSE)
+myexpltestdata <- BalanceData[inTest, ]
+predrf <- predict(modelrf, newdata = myexpltestdata)
+compmytestRF <- myexpltestdata
+compmytestRF$predright <- predrf == compmytestRF$classe
+ErrorRF = 1- sum(compmytestRF$predright)/ nrow(compmytestRF)
+cat("Number of correct predictions with Random Forest =", sum(compmytestRF$predright), "out of total cases =", nrow(compmytestRF))
+predrfe <- predict(results, newdata = myexpltestdata)
+compmytestRFE <- myexpltestdata
+compmytestRFE$predright <- predrfe$pred == compmytestRFE$classe
+ErrorRFE = 1- sum(compmytestRFE$predright)/ nrow(compmytestRFE)
+cat("Number of correct predictions with RFE =", sum(compmytestRFE$predright), "out of total cases =", nrow(compmytestRFE))
+predlvq1 <- predict(modellvq1, newdata = myexpltestdata)
+compmytestLVQ1 <- myexpltestdata
+compmytestLVQ1$predright <- predlvq1 == compmytestLVQ1$classe
+cat("Number of correct predictions with LVQ w/o preprossing =", sum(compmytestLVQ1$predright), "out of total cases =", nrow(compmytestLVQ1))
+ErrorLVQ1 = 1- sum(compmytestLVQ1$predright)/ nrow(compmytestLVQ1)
+predlvq2 <- predict(modellvq2, newdata = myexpltestdata)
+compmytestLVQ2 <- myexpltestdata
+compmytestLVQ2$predright <- predlvq2 == compmytestLVQ2$classe
+ErrorLVQ2 = 1- sum(compmytestLVQ2$predright)/ nrow(compmytestLVQ2)
+cat("Number of correct predictions with LVQ with preprossing =", sum(compmytestLVQ2$predright), "out of total cases =", nrow(compmytestLVQ2))
+predgbm <- predict(modelgbm, newdata = myexpltestdata)
+compmytestgbm <- myexpltestdata
+compmytestgbm$predright <- predgbm == compmytestgbm$classe
+Errorgbm = 1- sum(compmytestgbm$predright)/ nrow(compmytestgbm)
+cat("Number of correct predictions with GBM =", sum(compmytestgbm$predright), "out of total cases =", nrow(compmytestgbm))
+cat("Prediction Error Random Forest =", ErrorRF)
+cat("Prediction Error RFE =", ErrorRFE)
+cat("Prediction Error LVQ without Preprossing =", ErrorLVQ1)
+cat("Prediction Error LVQ with preprosseing =", ErrorLVQ2)
+cat("Prediction Error GBM =", Errorgbm)
+
+set.seed(1001)
+modelrf <- train(classe ~ ., data = testdata, trControl = trainControl(method = "cv", number = 10))
+testdata <- ftrain[-intrain2, ]
+predictrf <- predict(modelrf, newdata = testdata)
+testdata$predright <- predictrf == testdata$classe
+cat("Number of correct predictions =", sum(testdata$predright), "out of total cases =", nrow(testdata))
+Error = 1- sum(testdata$predright)/ nrow(testdata)
+cat("Prediction error =", Error )
+
+==================
+
 ```
 
 
-```{r, echo=FALSE, eval = FALSE}
-plot(cars)
-```
+
 
 
