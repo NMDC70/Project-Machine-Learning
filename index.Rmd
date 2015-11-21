@@ -15,7 +15,7 @@ Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible t
 
 ## Goal 
 
-Use the Training data provided to train a Machine Learning Model to correctly predict the manner in which the test subjects did the activity. Twenty cases are provided in the Test data for which prediction has to be done. A report has to be created on the approach & methodology including an estimation of the out of sample error.
+Use the Training data provided to train a Machine Learning Model to correctly predict the manner in which the test subjects did the activity. Twenty cases are provided in the Test data for which prediction output has to be submitted. A report has to be created on the approach & methodology including estimation of the out of sample error.
 
 ## Key Activities
 
@@ -51,7 +51,7 @@ cat("Dimensions after initial Data Cleansing", dim(inttrainset))
 
 In step two we will remove redundancy by eliminating very highly correlated variables, we will remove non zero value predictors & the basic time stamp information. 
 
-_"num_window" is a variable which has a very high correlation to classe because there are clear ranges of value in the data that correspond to specific class. If we have to tune our model to apply to data outside the given set then our ability to predict has to be based on a different sequencing of window numbers hence this variable is also dropped. Keeping "num_window"_ in the data set it can pretty much be the single predictor for activity as known value range of _num_window will give us the exact acitivty being performed. (For meeting the project requirements though we could have kept the predictor in & created very accurate predictions!!)
+_"num_window" is a variable which has a very high correlation to "classe" because there are clear ranges of value in the data that correspond to specific values in "classe". If we have to tune our model to apply to data outside the given set then our ability to predict has to be based on a different sequencing of window numbers hence this variable is also dropped. Keeping "num_window"_ in the data set it can pretty much be the single predictor for activity as known value range of _num_window will give us the exact acitivty being performed. (For meeting the project requirements though we could have kept num_window_ as a predictor & created very accurate predictions with a very limited number of variables, or even just one variable!. With num_window and three other variables a Random Forest model gave 100% correct predictions.)
 
 ```{r echo= FALSE}
 library(mlbench)
@@ -64,7 +64,7 @@ filteredDescr2 <- filteredDescr1[, - c(1,2,3)]
 cat("final Dimensions of the Training Dataset", dim(filteredDescr2))
 ```
 
-From this data set we will take about 20%. Using Recursive Feature Elimination we can see the relative important of the different variables. These can also be an input for further optimizing number of features. We will also train Models for Random Forest, Learning Vector Quantization & GBM & evaluate the relative importance of the variables. 
+From this data set we will take a 20% subset for intial analysis. Using Recursive Feature Elimination we can see the relative importance of the different variables. These can also be an input for further optimizing number of features. We will also train Models for Random Forest, Learning Vector Quantization & GBM and evaluate the relative importance of the variables. 
 
 The best approach would have been to compare the models with a 60/40 split of the training data but given the limitations of time & the computing capability that I have i am doing model comparison with 20 percent of data for training & then 20% of the data for testing.
 
@@ -99,13 +99,14 @@ set.seed(1001)
 fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 modelgbm <- train(classe ~., data = myexpldata, method = "gbm", trControl = fitControl, verbose = FALSE)
 importancegbm <- varImp(modelgbm, scale = FALSE)
-par(mfrow=c(1, 2))
+par(mfrow = c(1, 2))
+
 plot(importancelvq2, main = "Importance of variables - Learning Vector Quantization")
 plot(importancegbm, main = "Importance of variables - GBM")
 
 ```
 
-Recursive feature elimination presents a 25 variable list for doing correct predictions once we remove num-window from the list of variables!. With num-window in RFE would return only one variable or a shorter list of 4 or 5 variables. 
+Recursive feature elimination presents a 25 variable list for doing correct predictions. With num_window as a predictor RFE would return only one variable or a shorter list of 4 or 5 variables. 
 
 The relative importance from other Models is also presented & as would be expected the ranking of importance is varying based on the models. Before taking any decision on pruning features further i want to have a look at out of sample errors with a test set created from our training data. 
 
@@ -152,9 +153,9 @@ cat("Prediction Error LVQ with preprosseing =", ErrorLVQ2)
 cat("Prediction Error GBM =", Errorgbm)
 ```
 
-As we can see that random Forest seems to have better results than GBM for this data set. LVQ improves after preprocessing but even that result is way off, so we will select random forest as our model. For random Forest there seems to be significant contribution even by the least important variable so I will not prune the features any further (it might be worth doing two models one with 25 & one with 31 predictors but submission deadline is approaching so will do that at a later date!)
+Random Forest has better results than GBM for this data set. LVQ improves after preprocessing but even that result is way off, so we will select random forest as our model. For random Forest there seems to be significant contribution even by the least important variable so I will not prune the features any further (it might be worth doing two models one with 25 & one with 31 predictors but submission deadline is approaching & running one more model just takes too much time for the first run, so will do that at a later date!)
 
-Final validation by creating train & Test sets with a 60 / 40 split & training a Random Forest model. Before submission will training the model on the entire training data set. 
+Final validation by creating Train & Test sets with a 60 / 40 split & training a Random Forest model. Before submission will train the model on the entire training data set (not showing that step here, the prediction output is the same in both cases). 
 
 
 ```{r echo= FALSE}
@@ -178,13 +179,15 @@ predictfinal <- predict(modelrf, newdata = ftestdata)
 predictfinal
 
 ```
-Wow!! 20/20
+20/20
 
 
 # Annexure
 
 The code base of the project 
-```{r eval=FALSE, }
+```{r eval=FALSE }
+# caching chunks of code & parallel processing are possibly the most important tools for doing this project!!!
+## Caching though also gives issues as here I am caching output of 6 machine learning models & that creates its own complication.
 
 Traindata <- read.csv("C:/FOR R Projects/pml-training.csv")
 cat("Dimensions of the Training data", dim(Traindata)
@@ -270,14 +273,21 @@ cat("Prediction Error LVQ without Preprossing =", ErrorLVQ1)
 cat("Prediction Error LVQ with preprosseing =", ErrorLVQ2)
 cat("Prediction Error GBM =", Errorgbm)
 
+intrain2 <- createDataPartition(y = filteredDescr2$classe, p = 0.6, list = FALSE)
+traindata <- filteredDescr2[intrain2, ]
 set.seed(1001)
-modelrf <- train(classe ~ ., data = testdata, trControl = trainControl(method = "cv", number = 10))
-testdata <- ftrain[-intrain2, ]
+modelrf <- train(classe ~ ., data = traindata, trControl = trainControl(method = "cv", number = 10))
+modelrf$finalModel
+testdata <- filteredDescr2[-intrain2, ]
 predictrf <- predict(modelrf, newdata = testdata)
 testdata$predright <- predictrf == testdata$classe
 cat("Number of correct predictions =", sum(testdata$predright), "out of total cases =", nrow(testdata))
+
 Error = 1- sum(testdata$predright)/ nrow(testdata)
-cat("Prediction error =", Error )
+cat("Out of Sample Prediction error =", Error )
+ftestdata <- read.csv("C:/FOR R Projects/pml-testing.csv")
+predictfinal <- predict(modelrf, newdata = ftestdata)
+predictfinal
 
 ==================
 
